@@ -10,9 +10,7 @@ This file contains the source code for a RSA encryption and decryption. It was w
 #include <stdint.h>
 #include <math.h>
 #include <time.h>
-
-#include "rsalgorithm.cpp"
-#include "library.cpp"
+#include <string.h>
 
 #define IMAGE_WIDTH 256
 #define IMAGE_HEIGHT 256
@@ -28,7 +26,16 @@ struct rsa_components_struct {
 };
 
 /********************************************************
-Used for encryption and decryption purposes. 
+Used by big mod function. 
+Returns a^2.
+********************************************************/
+uint16_t square(uint16_t a)
+{
+    return (a * a);
+}
+
+/********************************************************
+Used by encryption and decryption functions. 
 Returns b^p%m.
 ********************************************************/
 uint16_t big_mod(uint16_t b, uint16_t p, uint16_t m) 
@@ -45,14 +52,14 @@ uint16_t big_mod(uint16_t b, uint16_t p, uint16_t m)
 The following function does the actual encryption task. 
 This function accepts the original frame and rsa 
 components parameters. Each uint16_t in the frame is 
-ciphered using RSA algorithm. Encrypted frame stores 
-the output.
+ciphered using RSA algorithm. Stores output in 
+encrypted_frame.
 ********************************************************/
-void rsa_encrypt_frame(uint16_t *original_frame, struct rsa_components_struct *rsa_components, uint16_t *encrypted_frame)
+void rsa_encrypt_frame(uint16_t *original_frame, struct rsa_components_struct rsa_components, uint16_t *encrypted_frame)
 {
     for (int i = 0; i < DIM; i++)
     {
-        encrypted_frame[i] = big_mod(original_frame[i], rsa_components->e, rsa_components->n);
+        encrypted_frame[i] = big_mod(original_frame[i], rsa_components.e, rsa_components.n);
     }
     return;
 }
@@ -61,39 +68,41 @@ void rsa_encrypt_frame(uint16_t *original_frame, struct rsa_components_struct *r
 The following function does the actual decryption task. 
 This function accepts the encrypted frame and rsa 
 components parameters. Each uint16_t in the frame is 
-deciphered using RSA algorithm. Decrypted frame stores 
-the output.
+deciphered using RSA algorithm. Stores output in
+decrypted_frame.
 ********************************************************/
-void rsa_decrypt_frame(uint16_t *encrypted_frame, struct rsa_components_struct *rsa_components, uint16_t *decrypted_frame)
+void rsa_decrypt_frame(uint16_t *encrypted_frame, struct rsa_components_struct rsa_components, uint16_t *decrypted_frame)
 {
     for (int i = 0; i < DIM; i++)
     {
-        decrypted_frame[i] = big_mod(encrypted_frame[i], rsa_components->d, rsa_components->n);
+        decrypted_frame[i] = big_mod(encrypted_frame[i], rsa_components.d, rsa_components.n);
     }
+    return;
 }
 
-void rsa_generate_components(struct rsa_components_struct *rsa_components) {
-    
+/********************************************************
+Used to generate rsa components needed for encryption
+and decryption. Stores output in rsa_components.
+********************************************************/
+void rsa_generate_components(struct rsa_components_struct rsa_components) {   
     /* for testing purposes assign rsa components staticly */
-    rsa_components->p = 3; 
-    rsa_components->q = 11;
-    rsa_components->n = p * q;
-    rsa_components->phi = (p - 1) * (q - 1);
-    rsa_components->e = 7;
-    rsa_components->d = 3;
-    
-    return;
-    
+    rsa_components.p = 3; 
+    rsa_components.q = 11;
+    rsa_components.n = rsa_components.p * rsa_components.q;
+    rsa_components.phi = (rsa_components.p - 1) * (rsa_components.q - 1);
+    rsa_components.e = 7;
+    rsa_components.d = 3;
+    return;   
 }
 
 int main(int argc, char **argv)
 {
-    string file_name;
+    char original_filename[50];
     if (argc > 1) {
-        original_filename = argv[1];
+        strcpy(original_filename, argv[1]);
     }
     
-    string encrypted_filename = "encrypted.raw";
+    char encrypted_filename[50] = "encrypted.raw";
     
     /* declare file variables */
 	FILE *original_f;
@@ -109,8 +118,9 @@ int main(int argc, char **argv)
     
 	/* calculate filesize, number of frames, and identify start and end pointers */
     printf("\nCalculating filesize, number of frames, and identifying start and end pointers...\n");
-    printf("\Offset of original_f pointer (start) = %p\n", original_f);
-	fseek(original_f, 0, SEEK_END); //seek the end of file
+    printf("\nPointer of original_f = %p\n", original_f);
+	long int position;
+    fseek(original_f, 0, SEEK_END); //seek the end of file
 	long const int filesize = ftell(original_f); //get the size of the file
 	int frames = filesize/(DIM*2);
 	printf("\nFrame count = %d\n", frames);
@@ -118,7 +128,7 @@ int main(int argc, char **argv)
 	printf("\nOffset of original_f pointer (end) = %ld\n", position);
 	rewind(original_f); //set position back to beginning    
     position = ftell(original_f);
-	printf("\nOffset of original_f pointer (rewinded) = %ld \n", position);
+	printf("\nOffset of original_f pointer (start) = %ld \n", position);
     
     /* allocate memory for buffer to hold original video file */
     printf("\nAllocating memory for buffers...\n");
@@ -131,7 +141,7 @@ int main(int argc, char **argv)
     
     /* read original file into original_buffer */
 	printf("\nReading original_f...\n");
-	fread(buffer, 2, filesize, original_f);
+	fread(original_buffer, 2, filesize, original_f);
 	printf("\nOffset of original_f pointer (after reading) = %p\n", original_f);    
     fclose(original_f);
     
@@ -151,31 +161,30 @@ int main(int argc, char **argv)
     printf("\nStarting operations on original_f...\n");
 	for(int f = 0; f < frames; f++){
         printf("\nFrame number = %d\n", f);
-        uint16_t *original_frame = buffer[0*f*DIM];
+        uint16_t *original_frame = &original_buffer[f*DIM];
         
         /* encrypt a frame */
         uint16_t *encrypted_frame;
         encrypted_frame = (uint16_t*)malloc(sizeof(uint16_t)*DIM);
         rsa_encrypt_frame(original_frame, rsa_components, encrypted_frame);
         
+        /* write encrypted frame to output file */
+        fwrite(encrypted_frame, DIM, 2, encrypted_f);
+
         /* decrypt a frame */
         uint16_t *decrypted_frame;
         decrypted_frame = (uint16_t*)malloc(sizeof(uint16_t)*DIM);
         rsa_decrypt_frame(encrypted_frame, rsa_components, decrypted_frame);
         
         //Compare original image to decrypted image
-        int frame_offset = f*DIM;
         for(int i = 0; i < DIM; i++){
-            if (original_frame[frame_offset+i] != decrypted_frame[i]) {
+            if (original_frame[i] != decrypted_frame[i]) {
                 printf("\nDecrypted frame does not match the original frame.\n");
-                exit(1)
+                exit(1);
             }
         }
         printf("\nOriginal frame and decrypted frame are identical.\n");
-        
-        /* write encrypted frame to output file */
-        fwrite(encrypted_frame, DIM, 2, encrypted_f);
-        
+                
         free(encrypted_frame);
         free(decrypted_frame);
         

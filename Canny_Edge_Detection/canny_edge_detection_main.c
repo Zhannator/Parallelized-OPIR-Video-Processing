@@ -3,18 +3,20 @@
 #include <stdint.h>
 #include <math.h>
 #include <time.h>
+#include <string.h>
 
 #define IMAGE_WIDTH 256
 #define IMAGE_HEIGHT 256
+#define DIM 65536 //IMAGE_WIDTH * IMAGE_HEIGHT
 
 int main(int argc, char **argv)
 {
-    string file_name;
+    char original_filename[50];
     if (argc > 1) {
-        original_filename = argv[1];
+        strcpy(original_filename, argv[1]);
     }
     
-    string encrypted_filename = "encrypted.txt";
+    char encrypted_filename[50] = "encrypted.txt";
     
     /* declare file variables */
 	FILE* original_f;
@@ -30,16 +32,17 @@ int main(int argc, char **argv)
     
 	/* calculate filesize, number of frames, and identify start and end pointers */
     printf("\nCalculating filesize, number of frames, and identifying start and end pointers...\n");
-    printf("\Offset of original_f pointer (start) = %p\n", original_f);
-	fseek(original_f, 0, SEEK_END); //seek the end of file
+    printf("\nPointer of original_f = %p\n", original_f);
+	long int position;
+    fseek(original_f, 0, SEEK_END); //seek the end of file
 	long const int filesize = ftell(original_f); //get the size of the file
-	int frames = filesize/(IMAGE_WIDTH*IMAGE_HEIGHT*2);
+	int frames = filesize/(DIM*2);
 	printf("\nFrame count = %d\n", frames);
 	position = ftell(original_f);
 	printf("\nOffset of original_f pointer (end) = %ld\n", position);
 	rewind(original_f); //set position back to beginning    
     position = ftell(original_f);
-	printf("\nOffset of original_f pointer (rewinded) = %ld \n", position);
+	printf("\nOffset of original_f pointer (start) = %ld \n", position);
     
     /* allocate memory for buffer to hold original video file */
     printf("\nAllocating memory for buffers...\n");
@@ -52,17 +55,20 @@ int main(int argc, char **argv)
     
     /* read original file into original_buffer */
 	printf("\nReading original_f...\n");
-	fread(buffer, 2, filesize, original_f);
+	fread(original_buffer, 2, filesize, original_f);
 	printf("\nOffset of original_f pointer (after reading) = %p\n", original_f);    
     
     /* cycle through frames in original_buffer and perform operations on individual frames */
     printf("\nStarting operations on original_f...\n");
 	for(int f = 0; f < frames; f++){
         printf("\nFrame number = %d\n", f);
-        uint16_t * image_pointer = buffer[0*f*IMAGE_WIDTH*IMAGE_HEIGHT];
+        uint16_t * frame = &original_buffer[f*DIM];
         
         /* TODO */
         
     }
    
+    free(original_buffer);
+    
+    fclose(original_f);
 }
