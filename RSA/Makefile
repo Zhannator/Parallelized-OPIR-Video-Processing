@@ -1,5 +1,5 @@
 CC := gcc
-CFLAGS += -std=c99
+CFLAGS += -std=c99 -lgmp
 
 rsa_main: rsa_main.c
 	$(CC) -o $@ $(CFLAGS) $<
