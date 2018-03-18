@@ -1,6 +1,6 @@
 /****************************************************************************************************************
 This file contains the source code for a RSA encryption and decryption. It was written by Zhanneta Plokhovska 
-(zhp3@pitt.edu).
+(zhp3@pitt.edu). It encrypts and decrypts raw video files and compares original file to decrypted file.
 ****************************************************************************************************************/
 
 /* standard c libraries */
@@ -35,7 +35,7 @@ frame and rsa parameters. Each uint16_t in the frame is
 ciphered using RSA algorithm. Stores output in
 encrypted_frame.
 ********************************************************/
-void rsa_encrypt_frame(uint16_t *original_frame, struct rsa_components_struct *rsa_components, unsigned long int *encrypted_frame)
+void rsa_encrypt_frame(uint16_t *original_frame, struct rsa_components_struct *rsa_components, unsigned int *encrypted_frame)
 {
     /* using gmp library to deal with very large numbers */
     
@@ -49,20 +49,22 @@ void rsa_encrypt_frame(uint16_t *original_frame, struct rsa_components_struct *r
     {
         /* set gmp variables */
         mpz_set_ui(encrypted_pixel, 0);
-        mpz_set_ui(base, (unsigned long int ) original_frame[i]);
+        mpz_set_ui(base, (unsigned int ) original_frame[i]);
         
         /* void mpz_powm (mpz_t rop, const mpz_t base, const mpz_t exp, const mpz_t mod) */
         /* Set rop to (base raised to exp) modulo mod. */
         mpz_powm(encrypted_pixel, base, rsa_components->e, rsa_components->n);
 
         /* convert back from mpz_t to uint16_t */
-        encrypted_frame[i] = (unsigned long int) mpz_get_ui(encrypted_pixel);
+        encrypted_frame[i] = (unsigned int) mpz_get_ui(encrypted_pixel);
         
+        /* Debugging
         if (i == 0) {
             gmp_printf ("encrypted_pixel is an mpz %Zd\n", encrypted_pixel);
             printf("\noriginal_frame[0] = %d\n", original_frame[i]);
             printf("\nencrypted_frame[0] = %d\n", encrypted_frame[i]);
         }
+        */
     }
     
     /* free gmp variables */
@@ -78,7 +80,7 @@ frame and rsa parameters. Each uint16_t in the frame is
 deciphered using RSA algorithm. Stores output in
 decrypted_frame.
 ********************************************************/
-void rsa_decrypt_frame(unsigned long int *encrypted_frame, struct rsa_components_struct *rsa_components, uint16_t *decrypted_frame)
+void rsa_decrypt_frame(unsigned int *encrypted_frame, struct rsa_components_struct *rsa_components, uint16_t *decrypted_frame)
 {
     /* using gmp library to deal with very large numbers */
     
@@ -91,7 +93,7 @@ void rsa_decrypt_frame(unsigned long int *encrypted_frame, struct rsa_components
     for (int i = 0; i < DIM; i++)
     {
         /* set gmp variables */
-        mpz_set_ui(base, (unsigned long int ) encrypted_frame[i]);
+        mpz_set_ui(base, (unsigned int ) encrypted_frame[i]);
         
         /* void mpz_powm (mpz_t rop, const mpz_t base, const mpz_t exp, const mpz_t mod) */
         /* Set rop to (base raised to exp) modulo mod. */
@@ -100,10 +102,12 @@ void rsa_decrypt_frame(unsigned long int *encrypted_frame, struct rsa_components
         /* convert back from mpz_t to uint16_t */
         decrypted_frame[i] = (uint16_t) mpz_get_ui(dencrypted_pixel);
         
+        /* Debugging
         if (i == 0) {
             printf("\nencrypted_frame[0] = %d\n", encrypted_frame[i]);
             printf("\nencrypted_frame[0] = %d\n", decrypted_frame[i]);
         }
+        */
     }
     
     /* free gmp variables */
@@ -139,8 +143,6 @@ void rsa_generate_components(struct rsa_components_struct *rsa_components) {
     mpz_mul(rsa_components->phi, rsa_components->p_minus_1, rsa_components->q_minus_1);
     mpz_set_ui(rsa_components->e, 7);
     mpz_set_ui(rsa_components->d, 758442487);
-
-    gmp_printf ("n is an mpz %Zd\n", rsa_components->n);
     
     return;   
 }
@@ -183,17 +185,17 @@ int main(int argc, char **argv)
     
 	/* calculate filesize, number of frames, and identify start and end pointers */
     printf("\nCalculating filesize, number of frames, and identifying start and end pointers...\n");
-    printf("\nPointer of original_f = %p\n", original_f);
+    //printf("\nPointer of original_f = %p\n", original_f);
 	long int position;
     fseek(original_f, 0, SEEK_END); //seek the end of file
 	long const int filesize = ftell(original_f); //get the size of the file
 	int frames = filesize/(DIM*2);
 	printf("\nFrame count = %d\n", frames);
 	position = ftell(original_f);
-	printf("\nOffset of original_f pointer (end) = %ld\n", position);
+	//printf("\nOffset of original_f pointer (end) = %ld\n", position);
 	rewind(original_f); //set position back to beginning    
     position = ftell(original_f);
-	printf("\nOffset of original_f pointer (start) = %ld \n", position);
+	//printf("\nOffset of original_f pointer (start) = %ld \n", position);
     
     /* allocate memory for buffer to hold original video file */
     printf("\nAllocating memory for buffers...\n");
@@ -207,13 +209,12 @@ int main(int argc, char **argv)
     /* read original file into original_buffer */
 	printf("\nReading original_f...\n");
 	fread(original_buffer, sizeof(uint16_t), filesize, original_f);
-	printf("\nOffset of original_f pointer (after reading) = %p\n", original_f);    
+	//printf("\nOffset of original_f pointer (after reading) = %p\n", original_f);    
     fclose(original_f);
     
     /* generate p, q, n, phi, e, and d for RSA encryption and decryption */
     struct rsa_components_struct rsa_components;
     rsa_generate_components(&rsa_components);
-    printf("\nIn Main, e = %d\n", rsa_components.e);
     
     /* open encrypted file */
     printf("\nOpening output file...\n");
@@ -229,23 +230,22 @@ int main(int argc, char **argv)
         printf("\nFrame number = %d\n", f);
         uint16_t *original_frame = &original_buffer[f*DIM];
 
+        /* Debugging
         printf("\n**************************************\n");
-        /* print a part of original_frame for testing */
         for(int i = 0; i < 10; i++) {
             printf("\noriginal_frame[%d] = %d\n", i, original_frame[i]);
         }
         printf("\n**************************************\n");
+        */
         
         /* encrypt a frame */
         printf("\nEncrypting...\n");
-        unsigned long int *encrypted_frame;
-        encrypted_frame = (unsigned long int*)malloc(sizeof(unsigned long int)*DIM);
+        unsigned int *encrypted_frame;
+        encrypted_frame = (unsigned int*)malloc(sizeof(unsigned int)*DIM);
         rsa_encrypt_frame(original_frame, &rsa_components, encrypted_frame);
-        
-	printf("\nSize of u long int: %d\n", sizeof(unsigned long int));
-	
+        	
         /* write encrypted frame to output file */
-        fwrite(encrypted_frame, DIM, sizeof(unsigned long int), encrypted_f);
+        fwrite(encrypted_frame, DIM, sizeof(unsigned int), encrypted_f);
 
         /* decrypt a frame */
         printf("\nDecrypting...\n");
@@ -253,14 +253,16 @@ int main(int argc, char **argv)
         decrypted_frame = (uint16_t*)malloc(sizeof(uint16_t)*DIM);
         rsa_decrypt_frame(encrypted_frame, &rsa_components, decrypted_frame);
 
+        /* Debugging
         printf("\n**************************************\n");
-        /* print a part of decrypted_frame for testing */
         for(int i = 0; i < 10; i++) {
             printf("\ndecrypted_frame[%d] = %d\n", i, decrypted_frame[i]);
         }
         printf("\n**************************************\n");        
-
-        //Compare original image to decrypted image
+        */
+        
+        //Compare original image to decrypted image'
+        printf("\nComparing original frame to decrypted frame...\n");
         for(int i = 0; i < DIM; i++){
             if (original_frame[i] != decrypted_frame[i]) {
                 printf("\noriginal_frame[%d] = %d\n", i, original_frame[i]);
