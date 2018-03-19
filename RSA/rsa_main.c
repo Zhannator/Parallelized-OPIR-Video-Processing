@@ -10,6 +10,7 @@ This file contains the source code for a RSA encryption and decryption. It was w
 #include <math.h>
 #include <time.h>
 #include <string.h>
+#include <time.h>
 
 /* other open source c libraries */
 #include <gmp.h>
@@ -183,6 +184,8 @@ int main(int argc, char **argv)
         exit(1);
 	}
     
+    clock_t exec_start, exec_end;
+    
 	/* calculate filesize, number of frames, and identify start and end pointers */
     printf("\nCalculating filesize, number of frames, and identifying start and end pointers...\n");
     //printf("\nPointer of original_f = %p\n", original_f);
@@ -226,6 +229,7 @@ int main(int argc, char **argv)
     
     /* cycle through frames in original_buffer and perform operations on individual frames */
     printf("\nStarting operations on original_f...\n");
+    exec_start = clock(); //start counting execution time
 	for(int f = 0; f < frames; f++){
         printf("\nFrame number = %d\n", f);
         uint16_t *original_frame = &original_buffer[f*DIM];
@@ -276,8 +280,11 @@ int main(int argc, char **argv)
         free(encrypted_frame);
         free(decrypted_frame);
         
-        break; //temporarily return after processing the first image, for testing
+        //break; //temporarily return after processing the first image, for testing
     }
+    
+    exec_end = clock(); //stop counting execution time
+    printf("\nExecution Time:   %0.6lf seconds\n", (float) (exec_end - exec_start) / CLOCKS_PER_SEC);
     
     rsa_free_components(&rsa_components);
     free(original_buffer);
