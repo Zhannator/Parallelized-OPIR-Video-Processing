@@ -179,8 +179,6 @@ int main(int argc, char **argv)
         
         printf("\nFrame frequency = %f sec\n", frame_freq);    
         
-
-        
         /* open original file */
         printf("\nOpening original video file...\n");
         original_f = fopen(original_filename, "r");
@@ -293,9 +291,9 @@ int main(int argc, char **argv)
     
     free(original_frame);
     free(encrypted_frame);
-    
+    rsa_free_components(&rsa_components);
+
     if (!rank) {
-        rsa_free_components(&rsa_components);
         free(original_buffer);
         free(encrypted_buffer);
         fclose(encrypted_f);

@@ -21,17 +21,18 @@ and compares original file to decrypted file.
 #define DIM 65536 //IMAGE_WIDTH*IMAGE_HEIGHT
 
 /* 
-    ./program filename1.raw filename2.raw
+    ./program filename1.raw filename2.raw num_of_frames
 */
 int main(int argc, char **argv)
 {
     char original_filename_1[50];
     char original_filename_2[50];
+    int frames;
     
     printf("\nReading input arguments...\n");
     
-    if (argc < 3) {
-        printf("\nError: Invalid arguments. Please run the program as follows: ./program filename1.raw filename2.raw\n");
+    if (argc < 4) {
+        printf("\nError: Invalid arguments. Please run the program as follows: ./program filename1.raw filename2.raw num_of_frames\n");
         exit(0);
     }
         
@@ -40,6 +41,8 @@ int main(int argc, char **argv)
     
     printf("\nVideo filename 1 = %s\n", original_filename_1);
     printf("\nVideo filename 2 = %s\n", original_filename_2);
+    
+    frames = atoi(argv[3]);
     
     /* declare file variables */
 	FILE *original_f_1;
@@ -58,67 +61,46 @@ int main(int argc, char **argv)
         exit(1);
 	}
     
-	/* calculate filesize, number of frames, and identify start and end pointers */
-    printf("\nCalculating filesize, number of frames, and identifying start and end pointers...\n");
-	long int position_1;
-    fseek(original_f_1, 0, SEEK_END); //seek the end of file
-	long const int filesize_1 = ftell(original_f_1); //get the size of the file
-	int frames_1 = filesize_1/(DIM*2);
-	printf("\nFrame count 1 = %d\n", frames_1);
-	position_1 = ftell(original_f_1);
-	rewind(original_f_1); //set position back to beginning    
-    position_1 = ftell(original_f_1);
-    long int position_2;
-    fseek(original_f_2, 0, SEEK_END); //seek the end of file
-	long const int filesize_2 = ftell(original_f_2); //get the size of the file
-	int frames_2 = filesize_2/(DIM*2);
-	printf("\nFrame count 2 = %d\n", frames_2);
-	position_2 = ftell(original_f_2);
-	rewind(original_f_2); //set position back to beginning    
-    position_2 = ftell(original_f_2);
-    
     /* allocate memory for buffer to hold original video file */
     printf("\nAllocating memory for buffers...\n");
     uint16_t *original_buffer_1;
-	original_buffer_1 = (uint16_t*)malloc(sizeof(uint16_t)*(filesize_1));
+	original_buffer_1 = (uint16_t*)malloc(sizeof(uint16_t)*(frames*DIM));
 	if (original_buffer_1 == NULL) {
 		printf("Memory could not be allocated for the 16-bit original_buffer_1\n");
 		exit(1);
 	}
     uint16_t *original_buffer_2;
-	original_buffer_2 = (uint16_t*)malloc(sizeof(uint16_t)*(filesize_2));
+	original_buffer_2 = (uint16_t*)malloc(sizeof(uint16_t)*(frames*DIM));
 	if (original_buffer_2 == NULL) {
 		printf("Memory could not be allocated for the 16-bit original_buffer_2\n");
 		exit(1);
 	}
     
-    if (frames_1 == frames_2) {
-        
-        /* read original file into original_buffer */
-        printf("\nReading original_f...\n");
-        fread(original_buffer_1, sizeof(uint16_t), filesize_1, original_f_1);   
-        fread(original_buffer_2, sizeof(uint16_t), filesize_2, original_f_2);
 
-        /* cycle through frames in original_buffer and perform operations on individual frames */
-        for (int f = 0; f < frames; f++) {
-            
-            uint16_t *original_frame_1 = &original_buffer_1[f*DIM];
-            uint16_t *original_frame_2 = &original_buffer_2[f*DIM];
-            
-            //Compare original image to decrypted image'
-            printf("\nComparing original frame to decrypted frame...\n");
-            for(int i = 0; i < DIM; i++){
-                if (original_frame_1[i] != original_frame_2[i]) {
-                    printf("\noriginal_frame[%d] = %d\n", i, original_frame_1[i]);
-                    printf("\ndecrypted_frame[%d] = %d\n", i, original_frame_2[i]);
-                    printf("\nDecrypted frame does not match the original frame.\n");
-                    exit(1);
-                }
+    /* read original file into original_buffer */
+    printf("\nReading original_f...\n");
+    fread(original_buffer_1, sizeof(uint16_t), frames*DIM, original_f_1);   
+    fread(original_buffer_2, sizeof(uint16_t), frames*DIM, original_f_2);
+
+    /* cycle through frames in original_buffer and perform operations on individual frames */
+    for (int f = 0; f < frames; f++) {
+        
+        uint16_t *original_frame_1 = &original_buffer_1[f*DIM];
+        uint16_t *original_frame_2 = &original_buffer_2[f*DIM];
+        
+        //Compare original image to decrypted image'
+        printf("\nComparing original frame to decrypted frame...\n");
+        for(int i = 0; i < DIM; i++){
+            if (original_frame_1[i] != original_frame_2[i]) {
+                printf("\noriginal_frame[%d] = %d\n", i, original_frame_1[i]);
+                printf("\ndecrypted_frame[%d] = %d\n", i, original_frame_2[i]);
+                printf("\nDecrypted frame does not match the original frame.\n");
+                exit(1);
             }
-            printf("\nOriginal frame and decrypted frame are identical.\n");
         }
+        printf("\nOriginal frame and decrypted frame are identical.\n");
     }
-    
+
     free(original_buffer_1);
     free(original_buffer_2);
     fclose(original_f_1);

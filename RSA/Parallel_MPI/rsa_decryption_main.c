@@ -12,6 +12,9 @@ This file contains the source code for a RSA decryption. It was written by Zhann
 #include <string.h>
 #include <time.h>
 
+/* standard mpi libraries */
+#include <mpi.h>
+
 /* other open source c libraries */
 #include <gmp.h>
 
@@ -119,135 +122,170 @@ void rsa_free_components(struct rsa_components_struct *rsa_components) {
 }
 
 /* 
-    ./program filename.raw framerate(optional)
+    ./program num_of_frames filename.raw framerate(optional)
 */
 int main(int argc, char **argv)
 {
     char original_filename[50];
-    float frame_freq = (float) 1.0/30.0; //default frame rate is 30 frames/sec
-    
-    printf("\nReading input arguments...\n");
-    
-    if (argc < 2) {
-        printf("\nError: Invalid arguments. Please run the program as follows: ./program filename.raw\n");
-        exit(0);
-    }
-        
-    strcpy(original_filename, argv[1]);
-    
-    printf("\nVideo filename = %s\n", original_filename);
-
-    
-    if (argc > 2) {
-        frame_freq = (float) 1.0/atof(argv[2]); //optionally user can provide his own framerate
-    }
-    
-    printf("\nFrame frequency = %f sec\n", frame_freq);    
-    
-    char decrypted_filename[50] = "decrypted.raw";
-    
+    float frame_freq; //default frame rate is 30 frames/sec
+	int frames;
+    clock_t exec_start, exec_end, frame_start, frame_end;
+    float delay;
+    uint16_t *decrypted_buffer;
+    unsigned int *original_buffer;
     /* declare file variables */
 	FILE *original_f;
 	FILE *decrypted_f;
+
+    /* MPI variables */
+    int rank; // id of current node
+    int size; // total number of nodes
     
-    /* open original file */
-	printf("\nOpening original video file...\n");
-	original_f = fopen(original_filename, "r");
-	if (original_f == NULL) {
-		printf("\nError: Pointer to original_f is NULL.\n");
-        exit(1);
-	}
+    /* Initialize MPI */
+    MPI_Init(&argc, &argv);
     
-	/* calculate filesize, number of frames, and identify start and end pointers */
-    printf("\nCalculating filesize, number of frames, and identifying start and end pointers...\n");
-    //printf("\nPointer of original_f = %p\n", original_f);
-	long int position;
-    fseek(original_f, 0, SEEK_END); //seek the end of file
-	long const int filesize = ftell(original_f); //get the size of the file
-	int frames = filesize/(DIM*4);
-	printf("\nFrame count = %d\n", frames);
-	position = ftell(original_f);
-	//printf("\nOffset of original_f pointer (end) = %ld\n", position);
-	rewind(original_f); //set position back to beginning    
-    position = ftell(original_f);
-	//printf("\nOffset of original_f pointer (start) = %ld \n", position);
+    /* Identify rank and size for MPI */
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
     
-    /* allocate memory for buffer to hold original video file */
-    printf("\nAllocating memory for buffers...\n");
-    unsigned int *original_buffer;
-	original_buffer = (unsigned int*)malloc(sizeof(unsigned int)*(filesize));
-	if (original_buffer == NULL) {
-		printf("Memory could not be allocated for the 16-bit original_buffer\n");
-		exit(1);
-	}
+    if (argc < 3) {
+        if (!rank) {
+            printf("\nError: Invalid arguments. Please run the program as follows: ./program num_of_frames filename.raw framerate(optional)\n");
+        }
+        exit(0);
+    }
     
-    /* read original file into original_buffer */
-	printf("\nReading original_f...\n");
-	fread(original_buffer, sizeof(unsigned int), filesize, original_f);
-	//printf("\nOffset of original_f pointer (after reading) = %p\n", original_f);    
-    fclose(original_f);
+    frames = atoi(argv[1]);
+    
+    if (!rank) {
+        printf("\nReading input arguments...\n");
+        
+        printf("\nFrame count = %d\n", frames);
+
+        strcpy(original_filename, argv[2]);
+        
+        printf("\nVideo filename = %s\n", original_filename);
+
+    
+        if (argc == 4) {
+            frame_freq = (float) 1.0/atof(argv[3]); //optionally user can provide his own framerate
+        }
+        else {
+            frame_freq = (float) 1.0/30.0; //default frame rate is 30 frames/sec
+        }   
+        
+        printf("\nFrame frequency = %f sec\n", frame_freq);   
+            
+        /* open original file */
+        printf("\nOpening original video file...\n");
+        original_f = fopen(original_filename, "r");
+        if (original_f == NULL) {
+            printf("\nError: Pointer to original_f is NULL.\n");
+            exit(1);
+        }
+        
+        /* allocate memory for buffer to hold original video file */
+        printf("\nAllocating memory for buffers...\n");
+        original_buffer = (unsigned int*)malloc(sizeof(unsigned int)*(DIM*frames));
+        if (original_buffer == NULL) {
+            printf("Memory could not be allocated for the 32-bit original_buffer\n");
+            exit(1);
+        }
+        decrypted_buffer = (uint16_t*)malloc(sizeof(uint16_t)*size*DIM); // number of frames =  number of nodes
+        if (decrypted_buffer == NULL) {
+            printf("Memory could not be allocated for the 16-bit decrypted_buffer\n");
+            exit(1);
+        }
+        
+        /* read original file into original_buffer */
+        printf("\nReading original_f...\n");
+        fread(original_buffer, sizeof(unsigned int), DIM*frames, original_f);
+        //printf("\nOffset of original_f pointer (after reading) = %p\n", original_f);    
+        fclose(original_f);
+        
+        /* open decrypted file */
+        printf("\nOpening output file...\n");
+        decrypted_f = fopen("decrypted.raw", "w");
+        if (decrypted_f == NULL) {
+            printf("\nError: Pointer to decrypted_f is NULL.\n");
+            exit(1);
+        }
+        
+        /* variables for calculating execution time and controlling frame rate */
+        printf("\nStarting operations on original_f...\n");
+        exec_start = clock(); //start counting execution time
+        frame_start = clock();
+        frame_end = frame_start;
+        
+        delay = 0.0;
+
+        printf("\nDecrypting...\n");
+    }
     
     /* generate p, q, n, phi, e, and d for RSA encryption and decryption */
     struct rsa_components_struct rsa_components;
     rsa_generate_components(&rsa_components);
     
-    /* open decrypted file */
-    printf("\nOpening output file...\n");
-	decrypted_f = fopen(decrypted_filename, "w");
-	if (decrypted_f == NULL) {
-		printf("\nError: Pointer to decrypted_f is NULL.\n");
-        exit(1);
-	}
-    
-    /* variables for calculating execution time and controlling frame rate */
-    clock_t exec_start, exec_end, frame_start, frame_end;
-    printf("\nStarting operations on original_f...\n");
-    exec_start = clock(); //start counting execution time
-    frame_start = clock();
-    frame_end = frame_start;
-    
-    float delay = 0.0;
+    unsigned int *original_frame = (unsigned int*)malloc(sizeof(unsigned int)*DIM);
+    uint16_t *decrypted_frame = (uint16_t*)malloc(sizeof(uint16_t)*DIM);
     
     /* cycle through frames in original_buffer and perform operations on individual frames */
-	for (int f = 0; f < frames; f++) {
-        /* Wait until next frame is available based on frame rate (frame_freq)*/
-        clock_t current_time = clock();
-        printf("\nExecution Time:   %0.6lf seconds\n", (float) current_time/CLOCKS_PER_SEC);
-        while ((((float) (current_time - frame_start) / CLOCKS_PER_SEC)) <  frame_freq) {
-            //printf("\nTime passed:   %0.6lf seconds\n", (float) (current_time - frame_start) / CLOCKS_PER_SEC);
-            //printf("."); //Waiting on the next frame...\n");
-            current_time = clock();
-        };        
+	for (int f = 0; f < frames/size; f++) {
+        if (!rank) {
+            /* Wait until next frame is available based on frame rate (frame_freq)*/
+            clock_t current_time = clock();
+            //printf("\nExecution Time:   %0.6lf seconds\n", (float) current_time/CLOCKS_PER_SEC);
+            while ((((float) (current_time - frame_start) / CLOCKS_PER_SEC)) <  frame_freq) {
+                //printf("\nTime passed:   %0.6lf seconds\n", (float) (current_time - frame_start) / CLOCKS_PER_SEC);
+                //printf("."); //Waiting on the next frame...\n");
+                current_time = clock();
+            };        
         
-        frame_start = clock();
-        delay = delay + (((float) (frame_end - frame_start) / CLOCKS_PER_SEC));
+            frame_start = clock();
+            delay = delay + (((float) (frame_end - frame_start) / CLOCKS_PER_SEC));
+        }
         
-        printf("\nFrame number = %d\n", f);
-        unsigned int *original_frame = &original_buffer[f*DIM];
-        
-        /* decrypt a frame */
-        printf("\nDecrypting...\n");
-        uint16_t *decrypted_frame;
-        decrypted_frame = (uint16_t*)malloc(sizeof(uint16_t)*DIM);
-        rsa_decrypt_frame(original_frame, &rsa_components, decrypted_frame);
+        /* MPI Barrier */
+        MPI_Barrier(MPI_COMM_WORLD);
 
-        /* write decrypted frame to output file */
-        fwrite(decrypted_frame, DIM, sizeof(uint16_t), decrypted_f);
+        /* MPI Scatter */
+        MPI_Scatter(&original_buffer[f*DIM*size], DIM, MPI_UNSIGNED, original_frame, DIM, MPI_UNSIGNED, 0, MPI_COMM_WORLD); //Check here
         
-        free(decrypted_frame);
+        /* decrypt a frame */     
+        rsa_decrypt_frame(original_frame, &rsa_components, decrypted_frame);
         
-        /* Capture when we got finished processing frame */
-        frame_end = clock();
+        /* MPI Gather */
+        MPI_Gather(decrypted_frame, DIM, MPI_UINT16_T, decrypted_buffer, DIM, MPI_UINT16_T, 0, MPI_COMM_WORLD); //Check here
+        
+        /* MPI Barrier */
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        if (!rank) {
+            /* write decrypted frame to output file */
+            fwrite(decrypted_buffer, size*DIM, sizeof(uint16_t), decrypted_f); 
+            
+            /* Capture when we got finished processing frame */
+            frame_end = clock();
+        }
+        
     }
     
-    exec_end = clock(); //stop counting execution time
-    printf("\nExecution Time:   %0.6lf seconds\n", (float) (exec_end - exec_start) / CLOCKS_PER_SEC);
-    printf("\nTotal Delay Time:   %0.6lf seconds\n", (float) delay);
+    if (!rank) {
+        exec_end = clock(); //stop counting execution time
+        printf("\nExecution Time:   %0.6lf seconds\n", (float) (exec_end - exec_start) / CLOCKS_PER_SEC);
+        printf("\nTotal Delay Time:   %0.6lf seconds\n", (float) delay);    
+    }
     
+    free(original_frame);
+    free(decrypted_frame);
     rsa_free_components(&rsa_components);
-    free(original_buffer);
     
-    fclose(decrypted_f);
+    if (!rank) {
+        free(original_buffer);
+        free(decrypted_buffer);
+        fclose(decrypted_f);
+    }
     
+    MPI_Finalize();
     return 0;
 }
